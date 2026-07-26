@@ -1,0 +1,521 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { Bell, UserCircle, Download, Save, MapPin, ArrowRight, ChevronDown, UploadCloud, X, FileVideo, Image as ImageIcon } from 'lucide-react';
+import { cn } from '../lib/utils';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+import { useAppStore } from '../store/appStore';
+import { t } from '../lib/i18n';
+import LanguageSelector from '../components/LanguageSelector';
+import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import L from 'leaflet';
+import LegalLibraryModal from '../components/LegalLibraryModal';
+
+// Create a custom icon to avoid default image issues with bundlers
+const customIcon = new L.Icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+function LocationMarker({ position, setPosition }: { position: L.LatLng | null, setPosition: (pos: L.LatLng) => void }) {
+  useMapEvents({
+    click(e) {
+      setPosition(e.latlng);
+    },
+  });
+
+  return position === null ? null : (
+    <Marker position={position} icon={customIcon} />
+  );
+}
+
+
+import ProfileModal from '../components/ProfileModal';
+import NotificationsModal from '../components/NotificationsModal';
+
+export default function FileFIR() {
+  const navigate = useNavigate();
+  const { user, addFIR, language, setLanguage, logout } = useAppStore();
+  const text = t[language];
+  const [step, setStep] = useState(1);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    crimeType: '',
+    incidentDate: '',
+    description: '',
+    title: '',
+    locationLat: 15.3173, // Default Karnataka center
+    locationLng: 75.7139,
+    address: '',
+    incidentTime: '',
+    evidenceFiles: [] as File[],
+  });
+  
+  const [isLegalLibraryOpen, setIsLegalLibraryOpen] = useState(false);
+
+  const homeRoute = user?.role === 'officer' ? '/police' : '/citizen';
+
+  const handleNext = () => {
+    if (step < 4) {
+      setStep(step + 1);
+    } else {
+      // Submit
+      // Convert evidence files to base64 for the PDF and store
+      Promise.all(formData.evidenceFiles.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            resolve({
+              id: 'EVID-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+              title: file.name,
+              type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document',
+              url: reader.result
+            });
+          };
+          reader.readAsDataURL(file);
+        });
+      })).then((evidenceArray) => {
+        addFIR({
+          title: formData.title || formData.crimeType || 'Incident Report',
+          description: formData.description,
+          type: formData.crimeType,
+          station: 'Central Zone',
+          severity: 'Medium',
+          location: formData.address,
+          incidentDate: formData.incidentDate,
+          incidentTime: formData.incidentTime,
+          evidence: evidenceArray as any[]
+        });
+        toast.success('FIR successfully submitted!');
+        navigate(homeRoute);
+      });
+      toast.success('FIR successfully submitted!');
+      navigate(homeRoute);
+    }
+  };
+
+  const generatePDF = async () => {
+    const element = document.getElementById('fir-form-content');
+    if (!element) return;
+    
+    const canvas = await html2canvas(element, { scale: 2 });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save('FIR_Draft.pdf');
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col font-sans antialiased text-[#1a1c1c] relative bg-[#f9f9f9]">
+       {/* Background Image */}
+       <div 
+        className="fixed inset-0 bg-cover bg-center bg-fixed z-0"
+        style={{ backgroundImage: 'url("https://lh3.googleusercontent.com/aida-public/AB6AXuD8vWoxEpQNPAOb9c1z9IOm8Vm8EZISC_KdqqI_YUU9wXWh9urwruO6HT3654fgoi-OfWpcjK9MyyZgM05jHqJmzZ2awUQgBrYojld7WukVFtWiWpQJXpMhXCYnrLoPkqoqQw3Wso30orTSg_R7XyyGBIojXeBl00bPn9YKgu9k_-iehAQlr2uhdnA7o9Pa750VzY6If5I4yKaNz9cJ-zYMUoFShS0crA0KgjAvvf9d2o_7GgJeQKXc_CnVMNfhebQt9g")'}}
+      />
+      <div className="absolute inset-0 bg-slate-900/10 pointer-events-none z-0" />
+
+      {/* Header */}
+      <header className="fixed top-0 w-full z-50 flex justify-between items-center px-4 md:px-16 h-16 bg-black/40 backdrop-blur-md border-b border-white/20">
+        <div className="flex items-center gap-3">
+          <img src="/karnataka-logo.svg" alt="Logo" className="w-8 h-8 object-contain" />
+          <span className="text-2xl font-display font-bold text-white cursor-pointer" onClick={() => navigate(homeRoute)}>{text['app.title']}</span>
+        </div>
+        
+        <nav className="hidden md:flex gap-8">
+          <button onClick={() => navigate(homeRoute)} className="text-white/80 text-sm font-semibold hover:text-white transition-colors">{text['nav.home']}</button>
+          <button onClick={() => window.open('tel:112')} className="text-white/80 text-sm font-semibold hover:text-white transition-colors">{text['citizen.dial112']}</button>
+          <button onClick={() => setIsLegalLibraryOpen(true)} className="text-white/80 text-sm font-semibold hover:text-white transition-colors">{text['nav.help']}</button>
+        </nav>
+
+        <div className="flex items-center gap-4">
+          <div className="hidden md:flex gap-3 text-white/90">
+            <button onClick={() => setIsNotificationsOpen(true)} className="hover:text-white hover:bg-white/10 p-2 rounded-full transition-colors"><Bell className="w-5 h-5" /></button>
+            <button onClick={() => setIsProfileOpen(true)} className="hover:text-white hover:bg-white/10 p-2 rounded-full transition-colors"><UserCircle className="w-5 h-5" /></button>
+          </div>
+          <LanguageSelector variant="light" />
+          <button onClick={() => { logout(); navigate('/'); }} className="hidden md:block text-sm text-white/90 font-bold hover:text-white hover:underline">Logout</button>
+        </div>
+      </header>
+
+      {/* Main Content Area */}
+      <main className="flex-grow pt-[104px] pb-16 px-4 md:px-16 max-w-7xl mx-auto w-full flex flex-col md:flex-row gap-8 relative z-10">
+        
+        {/* Left Sidebar: Stepper */}
+        <aside className="md:w-72 flex-shrink-0">
+          <div className="sticky top-[104px] bg-white/75 backdrop-blur-xl border border-white/50 shadow-sm rounded-2xl p-6">
+            <h2 className="text-xl font-display mb-8 bg-gradient-to-br from-blue-800 to-cyan-700 bg-clip-text text-transparent font-bold">Registration Progress</h2>
+            
+            <div className="flex flex-col relative">
+              {/* Step 1 */}
+              <div className="flex gap-4 mb-8 relative z-10">
+                <div className="flex flex-col items-center">
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md z-10", step >= 1 ? "bg-gradient-to-br from-blue-600 to-cyan-500 text-white" : "border-2 border-slate-300 bg-white/50 text-slate-400")}>1</div>
+                  <div className="absolute top-8 bottom-[-32px] left-[15px] w-[2px] bg-blue-500/30 -z-10" />
+                </div>
+                <div className="pt-1">
+                  <h3 className={cn("text-sm font-bold", step >= 1 ? "text-slate-900" : "text-slate-500")}>{text['fir.step1']}</h3>
+                </div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="flex gap-4 mb-8 relative z-10">
+                <div className="flex flex-col items-center">
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md z-10", step >= 2 ? "bg-gradient-to-br from-blue-600 to-cyan-500 text-white" : "border-2 border-slate-300 bg-white/50 text-slate-400")}>2</div>
+                  <div className="absolute top-8 bottom-[-32px] left-[15px] w-[2px] bg-slate-300/50 -z-10" />
+                </div>
+                <div className="pt-1">
+                  <h3 className={cn("text-sm font-bold", step >= 2 ? "text-slate-900" : "text-slate-500")}>{text['fir.step2']}</h3>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="flex gap-4 mb-8 relative z-10">
+                <div className="flex flex-col items-center">
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md z-10", step >= 3 ? "bg-gradient-to-br from-blue-600 to-cyan-500 text-white" : "border-2 border-slate-300 bg-white/50 text-slate-400")}>3</div>
+                  <div className="absolute top-8 bottom-[-32px] left-[15px] w-[2px] bg-slate-300/50 -z-10" />
+                </div>
+                <div className="pt-1">
+                  <h3 className={cn("text-sm font-bold", step >= 3 ? "text-slate-900" : "text-slate-500")}>{text['fir.step3']}</h3>
+                </div>
+              </div>
+
+              {/* Step 4 */}
+              <div className="flex gap-4 relative z-10">
+                <div className="flex flex-col items-center">
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md z-10", step >= 4 ? "bg-gradient-to-br from-blue-600 to-cyan-500 text-white" : "border-2 border-slate-300 bg-white/50 text-slate-400")}>4</div>
+                </div>
+                <div className="pt-1">
+                  <h3 className={cn("text-sm font-bold", step >= 4 ? "text-slate-900" : "text-slate-500")}>{text['fir.step4']}</h3>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Right Content */}
+        <section className="flex-grow flex flex-col gap-6">
+          
+          {/* Header Block */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white/75 backdrop-blur-xl border border-white/50 p-6 rounded-2xl sticky top-[80px] z-40 gap-4 shadow-sm">
+            <div>
+              <h1 className="text-3xl font-display text-slate-900 font-bold">{text['fir.title']}</h1>
+              <p className="text-base text-slate-600 mt-1">{text['fir.incidentInfo']}</p>
+            </div>
+            <div className="flex gap-3 w-full md:w-auto">
+              <button 
+                onClick={generatePDF}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white/50 border border-slate-300 text-slate-700 text-sm font-bold rounded-lg hover:bg-white/80 transition-colors"
+              >
+                <Download className="w-4 h-4" /> {text['fir.draftPdf']}
+              </button>
+              <button className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-white/50 border border-slate-300 text-slate-700 text-sm font-bold rounded-lg hover:bg-white/80 transition-colors">
+                <Save className="w-4 h-4" /> {text['fir.saveDraft']}
+              </button>
+            </div>
+          </div>
+
+          {/* Form Content */}
+          <div id="fir-form-content" className="bg-white/75 backdrop-blur-xl border border-white/50 p-6 md:p-8 rounded-2xl flex flex-col gap-8 shadow-sm">
+            {step === 1 && (
+              <>
+                {/* Crime Title */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>{text['fir.incidentTitle']} <span className="text-red-500">*</span></span>
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="Brief title for the incident..."
+                    className="w-full bg-white/50 border border-white/60 focus:bg-white/90 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-lg p-3 text-base text-slate-800 outline-none transition-all"
+                    value={formData.title}
+                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  />
+                </div>
+
+                {/* Crime Type */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>{text['fir.crimeType']} <span className="text-red-500">*</span></span>
+                  </label>
+                  <div className="relative">
+                    <select 
+                      className="w-full bg-white/50 border border-white/60 focus:bg-white/90 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-lg p-3 pl-4 pr-10 text-base text-slate-800 appearance-none outline-none transition-all"
+                      value={formData.crimeType}
+                      onChange={(e) => setFormData({...formData, crimeType: e.target.value})}
+                    >
+                      <option disabled value="">Select category...</option>
+                      <option value="theft">Theft / Robbery</option>
+                      <option value="assault">Assault / Violence</option>
+                      <option value="cyber">Cyber Crime</option>
+                      <option value="traffic">Traffic Violation / Accident</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <ChevronDown className="absolute right-3 top-3 text-slate-500 pointer-events-none w-5 h-5" />
+                  </div>
+                </div>
+
+                {/* Incident Date */}
+                <div className="flex flex-col gap-2 w-full md:w-1/2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>{text['fir.date']} <span className="text-red-500">*</span></span>
+                  </label>
+                  <input 
+                    type="date" 
+                    className="w-full bg-white/50 border border-white/60 focus:bg-white/90 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-lg p-3 text-base text-slate-800 outline-none transition-all"
+                    value={formData.incidentDate}
+                    onChange={(e) => setFormData({...formData, incidentDate: e.target.value})}
+                  />
+                </div>
+
+                {/* Description */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>{text['fir.desc']} <span className="text-red-500">*</span></span>
+                  </label>
+                  <p className="text-xs text-slate-500 mb-1">{text['fir.descHelp']}</p>
+                  <textarea 
+                    className="w-full bg-white/50 border border-white/60 focus:bg-white/90 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-lg p-3 text-base text-slate-800 resize-y placeholder-slate-400 outline-none transition-all"
+                    placeholder="Describe what happened..."
+                    rows={6}
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  />
+                </div>
+
+                {/* Map Block Placeholder */}
+                <div className="mt-4 p-6 bg-white/40 rounded-xl border border-slate-300/50 border-dashed flex flex-col items-center justify-center min-h-[140px] text-center backdrop-blur-sm">
+                  <MapPin className="w-8 h-8 text-slate-400 mb-2" />
+                  <p className="text-sm font-bold text-slate-600">Location pinning will be required in the next step.</p>
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>Incident Location (Karnataka) <span className="text-red-500">*</span></span>
+                  </label>
+                  <p className="text-xs text-slate-500 mb-1">Click on the map to pin the exact location.</p>
+                  
+                  <div className="h-[300px] w-full rounded-xl overflow-hidden border border-slate-300 shadow-sm relative z-0">
+                    <MapContainer 
+                      center={[formData.locationLat, formData.locationLng]} 
+                      zoom={7} 
+                      minZoom={6}
+                      maxBounds={[
+                        [11.5, 74.0],
+                        [18.5, 78.5]
+                      ]}
+                      maxBoundsViscosity={1.0}
+                      scrollWheelZoom={false}
+                      className="h-full w-full"
+                    >
+                      <TileLayer
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        noWrap={true}
+                      />
+                      <LocationMarker 
+                        position={new L.LatLng(formData.locationLat, formData.locationLng)} 
+                        setPosition={(pos) => setFormData({...formData, locationLat: pos.lat, locationLng: pos.lng})} 
+                      />
+                    </MapContainer>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 mt-4">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>Street Address / Landmark <span className="text-red-500">*</span></span>
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="E.g., Near MG Road Metro Station..."
+                    className="w-full bg-white/50 border border-white/60 focus:bg-white/90 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-lg p-3 text-base text-slate-800 outline-none transition-all"
+                    value={formData.address}
+                    onChange={(e) => setFormData({...formData, address: e.target.value})}
+                  />
+                </div>
+                
+                <div className="flex flex-col gap-2 w-full md:w-1/2 mt-2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>Approximate Time of Incident <span className="text-red-500">*</span></span>
+                  </label>
+                  <input 
+                    type="time" 
+                    className="w-full bg-white/50 border border-white/60 focus:bg-white/90 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 rounded-lg p-3 text-base text-slate-800 outline-none transition-all"
+                    value={formData.incidentTime}
+                    onChange={(e) => setFormData({...formData, incidentTime: e.target.value})}
+                  />
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-bold text-slate-800 flex justify-between">
+                    <span>Upload Evidence (Images / Videos)</span>
+                  </label>
+                  <p className="text-xs text-slate-500 mb-2">Upload any photos or videos related to the incident. You can select multiple files.</p>
+                  
+                  <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <input 
+                      type="file" 
+                      multiple
+                      accept="image/*,video/*"
+                      className="hidden" 
+                      id="evidence-upload"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setFormData({
+                            ...formData, 
+                            evidenceFiles: [...formData.evidenceFiles, ...Array.from(e.target.files)]
+                          });
+                        }
+                      }}
+                    />
+                    <label htmlFor="evidence-upload" className="cursor-pointer flex flex-col items-center">
+                      <div className="w-14 h-14 bg-blue-100/50 rounded-full flex items-center justify-center text-blue-600 mb-4 shadow-sm border border-blue-200">
+                        <UploadCloud className="w-7 h-7" />
+                      </div>
+                      <span className="text-sm font-bold text-blue-600 mb-1">Click to browse or drag and drop</span>
+                      <span className="text-xs font-semibold text-slate-500">Supports JPG, PNG, MP4, MOV</span>
+                    </label>
+                  </div>
+
+                  {formData.evidenceFiles.length > 0 && (
+                    <div className="mt-6">
+                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-3">Attached Files ({formData.evidenceFiles.length})</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {formData.evidenceFiles.map((file, index) => (
+                          <div key={index} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 shadow-sm aspect-square flex flex-col items-center justify-center">
+                            {file.type.startsWith('image/') ? (
+                              <img src={URL.createObjectURL(file)} alt="evidence" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 bg-slate-100">
+                                <FileVideo className="w-8 h-8 mb-2 opacity-50" />
+                                <span className="text-[10px] font-bold px-2 text-center break-all line-clamp-2">{file.name}</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-all duration-200 backdrop-blur-[2px]">
+                              <button 
+                                onClick={() => {
+                                  const newFiles = [...formData.evidenceFiles];
+                                  newFiles.splice(index, 1);
+                                  setFormData({...formData, evidenceFiles: newFiles});
+                                }}
+                                className="text-white text-xs bg-red-500 hover:bg-red-600 px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition-colors shadow-sm"
+                              >
+                                <X className="w-3.5 h-3.5" /> Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {step === 4 && (
+              <div className="flex flex-col gap-6">
+                <div className="text-center mb-2">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
+                    <Save className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-xl font-display font-bold text-slate-800">Review & Submit</h3>
+                  <p className="text-sm font-semibold text-slate-500 mt-1">Please verify all the details before submitting your FIR.</p>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Crime Type</p>
+                      <p className="text-sm font-bold text-slate-800">{formData.crimeType || 'Not specified'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Incident Date & Time</p>
+                      <p className="text-sm font-bold text-slate-800">{formData.incidentDate || 'Not specified'} {formData.incidentTime ? `at ${formData.incidentTime}` : ''}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="pt-3 border-t border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Location</p>
+                    <p className="text-sm font-bold text-slate-800">{formData.address || 'Not specified'}</p>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Description</p>
+                    <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{formData.description || 'No description provided'}</p>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Evidence</p>
+                    <p className="text-sm font-bold text-slate-800">{formData.evidenceFiles.length} file(s) attached</p>
+                    {formData.evidenceFiles.length > 0 && (
+                      <div className="grid grid-cols-4 md:grid-cols-6 gap-2 mt-3">
+                        {formData.evidenceFiles.map((file, index) => (
+                          <div key={index} className="relative rounded-lg overflow-hidden border border-slate-200 bg-slate-100 aspect-square flex flex-col items-center justify-center">
+                            {file.type.startsWith('image/') ? (
+                              <img src={URL.createObjectURL(file)} alt="evidence preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-slate-500">
+                                <FileVideo className="w-6 h-6 mb-1 opacity-50" />
+                                <span className="text-[8px] font-bold px-1 text-center break-all line-clamp-2">{file.name}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex gap-3">
+                  <div className="mt-0.5">
+                    <MapPin className="w-5 h-5 text-yellow-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-yellow-800">Declaration</h4>
+                    <p className="text-xs font-medium text-yellow-700 mt-1">
+                      By submitting this FIR, I declare that the information provided is true and correct to the best of my knowledge. I understand that false reporting is a punishable offense.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end mt-2 pb-12">
+            <button 
+              onClick={handleNext}
+              className="flex items-center gap-2 px-8 py-3 bg-gradient-to-br from-blue-600 to-cyan-500 text-white text-sm font-bold rounded-xl transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            >
+              {step === 1 ? text['fir.proceed'] : step === 4 ? 'Submit FIR' : 'Continue'}
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
+        </section>
+
+      </main>
+      <LegalLibraryModal
+        isOpen={isLegalLibraryOpen}
+        onClose={() => setIsLegalLibraryOpen(false)}
+      />
+      {isProfileOpen && <ProfileModal onClose={() => setIsProfileOpen(false)} />}
+      <NotificationsModal isOpen={isNotificationsOpen} onClose={() => setIsNotificationsOpen(false)} />
+    </div>
+  );
+}

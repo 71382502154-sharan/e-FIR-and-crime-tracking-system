@@ -1,0 +1,71 @@
+export type Role = 'citizen' | 'officer' | 'admin';
+
+export interface User {
+  id: string;
+  role: Role;
+  name: string;
+  station?: string;
+  phone?: string;
+  email?: string;
+  area?: string;
+  password?: string;
+}
+
+export type FIRStatus = 'Pending Verification' | 'Verified & Active' | 'Closed' | 'Pending Assignment' | 'Under Investigation';
+export type FRSeverity = 'High' | 'Medium' | 'Low';
+
+export interface Note {
+  id: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface Evidence {
+  id: string;
+  title: string;
+  type: 'image' | 'video' | 'document';
+  url: string;
+}
+
+export interface CaseEntity {
+  id: string;
+  name: string;
+  type: 'suspect' | 'victim' | 'location' | 'mo';
+}
+
+export interface CaseLink {
+  source: string;
+  target: string;
+  value?: number;
+  relationship?: string;
+}
+
+export interface FIR {
+  id: string;
+  userId?: string;
+  firNumber: string;
+  title: string;
+  description: string;
+  dateFiled: string;
+  station: string;
+  status: FIRStatus;
+  severity: FRSeverity;
+  type: string;
+  notes?: Note[];
+  location?: string;
+  incidentDate?: string;
+  incidentTime?: string;
+  evidence?: Evidence[];
+  entities?: CaseEntity[];
+  links?: CaseLink[];
+  aiAnalysis?: {
+    riskScore: number;
+    summary: string;
+    suspectsIdentified: string[];
+    moPattern: string;
+    recommendedActions: string[];
+  };
+  assignedOfficers?: string[];
+}

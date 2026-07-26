@@ -1,0 +1,9 @@
+const fs = require('fs');
+let file = fs.readFileSync('src/store/appStore.ts', 'utf8');
+
+file = file.replace(
+  "name: role === 'officer' ? 'Saisriram Sr' : 'Citizen',",
+  "name: role === 'officer' ? 'Saisriram Sr' : role === 'admin' ? 'Admin' : 'Citizen',"
+);
+
+fs.writeFileSync('src/store/appStore.ts', file);
